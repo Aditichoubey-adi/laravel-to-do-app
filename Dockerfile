@@ -1,38 +1,49 @@
- 
+FROM php:8.2-fpm-alpine
 
----
+# Set working directory to /var/www
+WORKDIR /var/www
 
-## 2. **Step 2: Create New Render Service**
+# Install system dependencies needed for Laravel and PHP extensions
+RUN apk add --no-cache \
+    curl \
+    git \
+    nodejs \
+    npm \
+    libxml2-dev \
+    libzip-dev \
+    postgresql-dev \
+    sqlite-dev \
+    supervisor \
+    nginx \
+    && docker-php-ext-install -j$(nproc) pdo pdo_mysql opcache \
+    && docker-php-ext-install zip
 
-Once the **`Dockerfile`** is visible on your GitHub repository, go back to Render:
+# Install Composer
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-1.  **Delete any previously failed services** (`laravel-to-do-app`, etc.) to prevent conflicts.
-2.  In the Render dashboard, click **+ New** and choose **Web Service**.
-3.  Select your repository: **`Aditichoubey-adi/laravel-to-do-app`**.
+# Copy the application code into the container
+COPY . /var/www
 
-Now, fill out the settings using the **Docker** runtime:
+# Install PHP dependencies (Composer)
+RUN composer install --optimize-autoloader --no-dev
 
-| Setting | Value | Rationale |
-| :--- | :--- | :--- |
-| **Language** (Runtime) | **Docker** | Uses the custom `Dockerfile`. |
-| **Root Directory** | **Empty** (Leave Blank) | The `Dockerfile` sets the working directory internally. |
-| **Dockerfile Path** | **`.`** | Tells Render the `Dockerfile` is in the repository root. |
-| **Build Command** | **Empty** (Leave Blank) | The build logic is now inside the `Dockerfile`. |
-| **Start Command** | **Empty** (Leave Blank) | The start logic (`CMD ["php-fpm"]`) is inside the `Dockerfile`. |
-| **Environment Group** | **`todo-db`** | Ensure your database connection is active. |
+# Install Node dependencies and build assets
+RUN npm install
+RUN npm run build
 
-* Click **Create Web Service**.
+# Set proper permissions for Laravel storage and cache directories
+RUN chown -R www-data:www-data /var/www/storage /var/www/bootstrap/cache
+RUN chmod -R 775 /var/www/storage /var/www/bootstrap/cache
 
----
+# Copy the custom Nginx config (assuming you have a default.conf)
+# If you don't have default.conf yet, please comment out the next line or create it.
+# COPY default.conf /etc/nginx/conf.d/default.conf
 
-## 3. **Step 3: Run Database Migrations**
+# Expose port 80 (where Nginx will run)
+EXPOSE 80
 
-The deployment will now start building the Docker image (which takes 5-10 minutes). Once the status shows **Live**:
-
-1.  Go to the **Shell tab** in your Web Service dashboard.
-2.  Run this command to create the necessary database tables:
-
-    ```bash
-    php artisan migrate --force
-    
-After running the migration command, your application should be fully functional at its Render URL! Let me know once you've successfully pushed the `Dockerfile` to GitHub.
+# Define the command to run the services (PHP-FPM and Nginx)
+# NOTE: If you commented out the Nginx config above, use 'php-fpm' below.
+# CMD sh -c "php-fpm && nginx -g 'daemon off;'"
+# Since you might not have the default.conf, let's simplify the command for now:
+CMD ["php-fpm"]
